@@ -138,9 +138,9 @@ namespace ResidualEcho.Editor
         {
             string[] fbxPaths =
             {
-                "Assets/Animations/Creature/Meshy_AI_Animation_Axe_Breathe_and_Look_Around_withSkin.fbx",
-                "Assets/Animations/Creature/Meshy_AI_Animation_Walking_withSkin.fbx",
-                "Assets/Animations/Creature/Meshy_AI_Animation_Lean_Forward_Sprint_inplace_withSkin.fbx",
+                "Assets/Models/Creature/Meshy_AI_Animation_Axe_Breathe_and_Look_Around_withSkin.fbx",
+                "Assets/Models/Creature/Meshy_AI_Animation_Walking_withSkin.fbx",
+                "Assets/Models/Creature/Meshy_AI_Animation_Lean_Forward_Sprint_inplace_withSkin.fbx",
             };
 
             foreach (var path in fbxPaths)
@@ -222,9 +222,9 @@ namespace ResidualEcho.Editor
             // FBX 경로 → 상태 이름 매핑
             var clipMap = new System.Collections.Generic.Dictionary<string, string>
             {
-                { "Assets/Animations/Creature/Meshy_AI_Animation_Axe_Breathe_and_Look_Around_withSkin.fbx", "Idle" },
-                { "Assets/Animations/Creature/Meshy_AI_Animation_Walking_withSkin.fbx", "Walk" },
-                { "Assets/Animations/Creature/Meshy_AI_Animation_Lean_Forward_Sprint_inplace_withSkin.fbx", "Run" },
+                { "Assets/Models/Creature/Meshy_AI_Animation_Axe_Breathe_and_Look_Around_withSkin.fbx", "Idle" },
+                { "Assets/Models/Creature/Meshy_AI_Animation_Walking_withSkin.fbx", "Walk" },
+                { "Assets/Models/Creature/Meshy_AI_Animation_Lean_Forward_Sprint_inplace_withSkin.fbx", "Run" },
             };
 
             var rootStateMachine = controller.layers[0].stateMachine;
