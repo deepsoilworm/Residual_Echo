@@ -97,3 +97,15 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# macOS
+.DS_Store
+
+# MCP Unity
+.mcp.json
+
+# Old project backup
+/IgnoreFolder/
+
+# Solution files
+*.slnx
