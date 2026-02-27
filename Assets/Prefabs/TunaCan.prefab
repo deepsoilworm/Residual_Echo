@@ -104,7 +104,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7eb97e474e87f8f4f9c07dae074b7771, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ItemBase
-  itemData: {fileID: 11400000, guid: ad7cceec216623e4b9dcfff0c6fcf15d, type: 2}
+  itemData: {fileID: 11400000, guid: 7a801af7af1fabf49b2e6164f7a23327, type: 2}
   defaultInteractionPrompt: "\uC544\uC774\uD15C \uC90D\uAE30"
 --- !u!65 &8037439894780149527
 BoxCollider:

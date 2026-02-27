@@ -9,7 +9,7 @@ public class InventoryManager : MonoBehaviour
     private InventoryInputGateway inputGateway;
 
     [SerializeField] private GameObject inventoryRoot;
-    [SerializeField] private InventoryGridView inventoryGridView;
+    [SerializeField] private InvenGridView inventoryGridView;
 
     private readonly List<ItemData> items = new();
     private bool isOpen;

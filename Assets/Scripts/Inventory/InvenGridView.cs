@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// 인벤토리 그리드 전체 UI 렌더링을 담당한다.
-public class InventoryGridView : MonoBehaviour
+public class InvenGridView : MonoBehaviour
 {
-    [SerializeField] private List<InventorySlotView> slotViews = new();
+    [SerializeField] private List<InvenSlotView> slotViews = new();
 
     /// 현재 슬롯 개수를 반환한다.
     public int SlotCount => slotViews.Count;
@@ -15,7 +15,7 @@ public class InventoryGridView : MonoBehaviour
     {
         for (int i = 0; i < slotViews.Count; i++)
         {
-            InventorySlotView slotView = slotViews[i];
+            InvenSlotView slotView = slotViews[i];
 
             if (slotView == null)
             {

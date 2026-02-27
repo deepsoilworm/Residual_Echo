@@ -4,7 +4,7 @@ using UnityEngine.UI;
 /// <summary>
 /// 인벤토리 단일 슬롯 UI 표시를 담당한다.
 /// </summary>
-public class InventorySlotView : MonoBehaviour
+public class InvenSlotView : MonoBehaviour
 {
     [SerializeField] private Image iconImage;
 
