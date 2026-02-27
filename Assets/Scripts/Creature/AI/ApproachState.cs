@@ -16,7 +16,7 @@ namespace ResidualEcho.Creature
         public override void Enter()
         {
             NavMeshAgent agent = stateMachine.Agent;
-            agent.speed = stateMachine.Settings.ApproachSpeed;
+            agent.speed = stateMachine.Settings.ApproachSpeed * stateMachine.RageSpeedMultiplier;
 
             UpdateApproachTarget();
         }
@@ -46,7 +46,9 @@ namespace ResidualEcho.Creature
             Transform player = stateMachine.PlayerTransform;
             if (player == null) return;
 
-            float radius = stateMachine.Settings.ApproachRandomRadius;
+            float radius = stateMachine.Settings.ApproachRandomRadius
+                - (stateMachine.RageLevel * stateMachine.Settings.RageApproachRadiusShrink);
+            if (radius < 1f) radius = 1f;
             Vector2 randomOffset = Random.insideUnitCircle * radius;
             targetPosition = player.position + new Vector3(randomOffset.x, 0f, randomOffset.y);
 

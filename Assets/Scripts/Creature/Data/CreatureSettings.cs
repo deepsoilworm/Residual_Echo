@@ -24,6 +24,14 @@ namespace ResidualEcho.Creature
         [Header("접근")]
         [SerializeField] private float approachRandomRadius = 5f;
 
+        [Header("격앙 (Rage)")]
+        [SerializeField] private float rageSpeedBonus = 0.15f;
+        [SerializeField] private int maxRageLevel = 5;
+        [SerializeField] private float rageApproachRadiusShrink = 0.5f;
+
+        [Header("경직 (Paralysis)")]
+        [SerializeField] private float paralysisRecoveryDelay = 1f;
+
         public float ApproachSpeed => approachSpeed;
         public float ChaseSpeed => chaseSpeed;
         public float DetectionRange => detectionRange;
@@ -32,5 +40,25 @@ namespace ResidualEcho.Creature
         public float VanishDistance => vanishDistance;
         public float VanishDuration => vanishDuration;
         public float ApproachRandomRadius => approachRandomRadius;
+
+        /// <summary>
+        /// 격앙 레벨당 속도 보너스 배율 (0.15 = 15%)
+        /// </summary>
+        public float RageSpeedBonus => rageSpeedBonus;
+
+        /// <summary>
+        /// 최대 격앙 레벨
+        /// </summary>
+        public int MaxRageLevel => maxRageLevel;
+
+        /// <summary>
+        /// 격앙 레벨당 접근 랜덤 반경 축소량
+        /// </summary>
+        public float RageApproachRadiusShrink => rageApproachRadiusShrink;
+
+        /// <summary>
+        /// 경직 상태에서 노래 종료 후 복귀까지의 지연 시간 (초)
+        /// </summary>
+        public float ParalysisRecoveryDelay => paralysisRecoveryDelay;
     }
 }

@@ -12,7 +12,7 @@ namespace ResidualEcho.Creature
 
         public override void Enter()
         {
-            stateMachine.Agent.speed = stateMachine.Settings.ChaseSpeed;
+            stateMachine.Agent.speed = stateMachine.Settings.ChaseSpeed * stateMachine.RageSpeedMultiplier;
         }
 
         public override void Update()
