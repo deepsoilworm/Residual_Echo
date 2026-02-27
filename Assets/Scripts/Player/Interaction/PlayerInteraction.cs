@@ -12,6 +12,9 @@ namespace ResidualEcho.Player
     {
         [SerializeField] private PlayerSettings settings;
         [SerializeField] private Transform cameraTransform;
+        [SerializeField] private LayerMask interactionLayerMask = ~0;
+
+        private readonly RaycastHit[] raycastHits = new RaycastHit[10];
 
         /// <summary>
         /// 현재 바라보고 있는 상호작용 가능 대상. UI 표시 등에 활용.
@@ -24,19 +27,27 @@ namespace ResidualEcho.Player
         }
 
         /// <summary>
-        /// 카메라 정면 Raycast로 IInteractable 대상 감지
+        /// 카메라 정면 Raycast로 IInteractable 대상 감지.
+        /// RaycastNonAlloc으로 여러 히트를 받아 자기 자신(Player)을 건너뛰고
+        /// 첫 번째 다른 오브젝트에서 IInteractable을 찾는다.
         /// </summary>
         private void DetectInteractable()
         {
             Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+            int hitCount = Physics.RaycastNonAlloc(ray, raycastHits, settings.InteractionDistance, interactionLayerMask);
 
-            if (Physics.Raycast(ray, out RaycastHit hit, settings.InteractionDistance))
+            CurrentTarget = null;
+
+            for (int i = 0; i < hitCount; i++)
             {
-                CurrentTarget = hit.collider.GetComponent<IInteractable>();
-            }
-            else
-            {
-                CurrentTarget = null;
+                // 자기 자신(Player) 콜라이더는 무시
+                if (raycastHits[i].collider.gameObject == gameObject)
+                {
+                    continue;
+                }
+
+                CurrentTarget = raycastHits[i].collider.GetComponent<IInteractable>();
+                break;
             }
         }
 
