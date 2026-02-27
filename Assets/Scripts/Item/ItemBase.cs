@@ -34,12 +34,11 @@ public class ItemBase : MonoBehaviour, IInteractable
         if (inventoryManager == null)
         {
             inventoryManager = FindFirstObjectByType<InventoryManager>();
+            Debug.Log("인벤토리 매니저 발견.");
         }
     }
 
-    /// <summary>
     /// 상호작용 성공 시 인벤토리에 아이템을 추가하고 월드 오브젝트를 비활성화한다.
-    /// </summary>
     public void Interact()
     {
         if (isCollected || itemData == null || inventoryManager == null)
@@ -51,6 +50,8 @@ public class ItemBase : MonoBehaviour, IInteractable
         {
             return;
         }
+
+        //Destroy(this.gameObject);
 
         isCollected = true;
         gameObject.SetActive(false);
