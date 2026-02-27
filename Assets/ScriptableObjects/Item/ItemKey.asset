@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 30ad49ac1dd61ec44b1c74c5f5124a63, type: 3}
-  m_Name: ItemTuna
+  m_Name: ItemKey
   m_EditorClassIdentifier: Assembly-CSharp::ItemData
-  itemId: 001
-  itemName: Pepper Tuna
-  description: Pepper Tuna. Its very HOT!
-  icon: {fileID: 21300000, guid: 951e27b12c1e7804b9e6f764f3e6b3bd, type: 3}
+  itemId: 002
+  itemName: DoorKey
+  description: Its DoorKey
+  icon: {fileID: 21300000, guid: ea6776fa9e3315f4e80e975d289b97e1, type: 3}
