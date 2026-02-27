@@ -10,6 +10,7 @@ public class InventoryManager : MonoBehaviour
 
     [SerializeField] private GameObject inventoryRoot;
     [SerializeField] private InvenGridView inventoryGridView;
+    [SerializeField] private InventoryItemInfoView itemInfoView;
 
     private readonly List<ItemData> items = new();
     private bool isOpen;
@@ -23,24 +24,30 @@ public class InventoryManager : MonoBehaviour
 
     private void OnEnable()
     {
-        if (inputGateway == null)
+        if (inputGateway != null)
         {
-            return;
+            inputGateway.ToggleRequested += HandleToggleRequested;
+            inputGateway.CloseRequested += HandleCloseRequested;
         }
 
-        inputGateway.ToggleRequested += HandleToggleRequested;
-        inputGateway.CloseRequested += HandleCloseRequested;
+        if (inventoryGridView != null)
+        {
+            inventoryGridView.SlotItemSelected += HandleSlotItemSelected;
+        }
     }
 
     private void OnDisable()
     {
-        if (inputGateway == null)
+        if (inputGateway != null)
         {
-            return;
+            inputGateway.ToggleRequested -= HandleToggleRequested;
+            inputGateway.CloseRequested -= HandleCloseRequested;
         }
 
-        inputGateway.ToggleRequested -= HandleToggleRequested;
-        inputGateway.CloseRequested -= HandleCloseRequested;
+        if (inventoryGridView != null)
+        {
+            inventoryGridView.SlotItemSelected -= HandleSlotItemSelected;
+        }
     }
 
     /// <summary>
@@ -109,6 +116,14 @@ public class InventoryManager : MonoBehaviour
         {
             inventoryRoot.SetActive(isOpen);
         }
+
+        Cursor.lockState = isOpen ? CursorLockMode.None : CursorLockMode.Locked;
+        Cursor.visible = isOpen;
+
+        if (!isOpen && itemInfoView != null)
+        {
+            itemInfoView.Clear();
+        }
     }
 
     private void RefreshGrid()
@@ -119,5 +134,15 @@ public class InventoryManager : MonoBehaviour
         }
 
         inventoryGridView.Render(items);
+    }
+
+    private void HandleSlotItemSelected(ItemData itemData)
+    {
+        if (itemInfoView == null)
+        {
+            return;
+        }
+        
+        itemInfoView.ShowItem(itemData);
     }
 }
