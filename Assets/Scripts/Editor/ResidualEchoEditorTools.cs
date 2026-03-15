@@ -296,6 +296,70 @@ namespace ResidualEcho.Editor
         {
             WireSceneReferences();
             BakeNavMesh();
+            SetupCreatureSpawnSystem();
+        }
+
+        /// <summary>
+        /// 씬의 Creature를 프리팹으로 저장하고, 모든 CreatureSpawnTrigger에 연결한다.
+        /// </summary>
+        [MenuItem("ResidualEcho/Setup Creature Spawn System")]
+        public static void SetupCreatureSpawnSystem()
+        {
+            // 1) Creature 프리팹 생성/갱신 (비활성 오브젝트 포함 검색)
+            GameObject creature = null;
+            foreach (var sm2 in Object.FindObjectsByType<CreatureStateMachine>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                creature = sm2.gameObject;
+                break;
+            }
+            if (creature == null)
+            {
+                Debug.LogWarning("[ResidualEcho] Creature not found in scene!");
+                return;
+            }
+            creature.SetActive(true); // 프리팹 저장을 위해 임시 활성화
+
+            // 스폰포인트 참조 초기화 (프리팹에는 씬 참조 불가)
+            var sm = creature.GetComponent<CreatureStateMachine>();
+            if (sm != null)
+            {
+                sm.CreatureSpawnPoint = null;
+            }
+
+            string prefabFolder = "Assets/Prefabs/Creature";
+            if (!AssetDatabase.IsValidFolder("Assets/Prefabs/Creature"))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/Prefabs"))
+                    AssetDatabase.CreateFolder("Assets", "Prefabs");
+                AssetDatabase.CreateFolder("Assets/Prefabs", "Creature");
+            }
+
+            string prefabPath = $"{prefabFolder}/Creature.prefab";
+            PrefabUtility.SaveAsPrefabAsset(creature, prefabPath);
+            Debug.Log($"[ResidualEcho] Creature prefab saved: {prefabPath}");
+
+            // 2) CorridorSegment 프리팹 YAML에서 creaturePrefab 참조 직접 설정
+            string corridorPrefabPath = "Assets/Prefabs/Level/CorridorSegment.prefab";
+            string creatureGuid = AssetDatabase.AssetPathToGUID(prefabPath);
+            // Creature 프리팹의 root GameObject fileID 조회
+            var creatureAsset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (creatureAsset != null && !string.IsNullOrEmpty(creatureGuid))
+            {
+                string fullPath = System.IO.Path.GetFullPath(corridorPrefabPath);
+                string yaml = System.IO.File.ReadAllText(fullPath);
+                string replacement = $"creaturePrefab: {{fileID: {GlobalObjectId.GetGlobalObjectIdSlow(creatureAsset).targetObjectId}, guid: {creatureGuid}, type: 3}}";
+                yaml = yaml.Replace("creaturePrefab: {fileID: 0}", replacement);
+                System.IO.File.WriteAllText(fullPath, yaml);
+                AssetDatabase.ImportAsset(corridorPrefabPath);
+                Debug.Log($"[ResidualEcho] Creature prefab linked via YAML: {replacement}");
+            }
+
+            // 3) 씬 인스턴스 갱신을 위해 레벨 재생성 필요 → 사용자에게 알림
+
+            // 3) 씬의 Creature 비활성화 (프리팹에서 스폰하므로)
+            creature.SetActive(false);
+
+            Debug.Log("[ResidualEcho] Creature spawn system setup complete!");
         }
 
         [MenuItem("ResidualEcho/Create Event Assets")]
@@ -849,6 +913,471 @@ namespace ResidualEcho.Editor
 
             EditorUtility.SetDirty(titleCanvasGO);
             Debug.Log("[ResidualEcho] Title scene setup complete!");
+        }
+
+        [MenuItem("ResidualEcho/Generate Greybox Level")]
+        public static void GenerateGreyboxLevel()
+        {
+            // 기존 레벨 제거
+            var existing = GameObject.Find("GreyboxLevel");
+            if (existing != null)
+            {
+                Object.DestroyImmediate(existing);
+            }
+
+            // --- Environment --- 아래에 생성
+            var envParent = GameObject.Find("--- Environment ---");
+            var root = new GameObject("GreyboxLevel");
+            root.isStatic = true;
+            if (envParent != null)
+            {
+                root.transform.SetParent(envParent.transform, false);
+            }
+
+            // NavMeshSurface 추가
+            if (root.GetComponent<NavMeshSurface>() == null)
+            {
+                root.AddComponent<NavMeshSurface>();
+            }
+
+            // --- 치수 ---
+            float cw = 3f;     // corridor width
+            float ch = 2.9f;   // corridor height
+            float wt = 0.3f;   // wall thickness
+            float hw = cw / 2f;
+
+            // 8번출구 스타일 심리스 루프: Z자 복도 × 3 세그먼트
+            //
+            // [세그먼트 0 (뒤)] ─연결─ [세그먼트 1 (가운데)] ─연결─ [세그먼트 2 (앞)]
+            //                           ↑ 플레이어는 항상 여기
+            //
+            // 각 세그먼트: 직선A → 코너1 → 직선B → 코너2 → 직선C
+            // 세그먼트 간 연결: C 끝 → 다음 A 시작 (벽 없이 이어짐)
+            //
+            float lenA = 5f;    // 직선A — 짧은 꺾임 구간
+            float lenB = 20f;   // 직선B — 긴 메인 복도 (교실+지하실)
+            float lenC = 5f;    // 직선C — 짧은 꺾임 구간
+
+            var lv = root.transform;
+            var floorMat = CreateGreyboxMaterial("Floor", new Color(0.25f, 0.25f, 0.25f));
+            var wallMat = CreateGreyboxMaterial("Wall", new Color(0.35f, 0.35f, 0.32f));
+            var ceilMat = CreateGreyboxMaterial("Ceiling", new Color(0.2f, 0.2f, 0.2f));
+            var stairMat = CreateGreyboxMaterial("Stair", new Color(0.3f, 0.3f, 0.28f));
+            // 프리팹 스폰 방식 — 이벤트 채널 불필요
+
+            // 세그먼트 오프셋 계산 (Z자 1개의 시작→끝 벡터)
+            float bStartX = cw;
+            float bCenterZ = lenA + hw;
+            float c2x = bStartX + lenB + hw;
+            float cStartZ = bCenterZ + hw;
+            float cEndZ = cStartZ + lenC;
+
+            // C→A 연결 계단 (올라가기)
+            int transStairCount = 6;
+            float transStepHeight = 0.3f;   // 한 계단 높이
+            float transStepDepth = 0.5f;    // 한 계단 깊이 (z)
+            float transRise = transStairCount * transStepHeight; // 총 상승 1.8m
+            float transLength = transStairCount * transStepDepth; // 총 길이 3.0m
+
+            Vector3 segmentOffset = new Vector3(c2x, transRise, cEndZ + transLength);
+
+            // ====== 세그먼트 프리팹 생성 ======
+            string prefabFolder = "Assets/Prefabs/Level";
+            if (!AssetDatabase.IsValidFolder("Assets/Prefabs/Level"))
+            {
+                if (!AssetDatabase.IsValidFolder("Assets/Prefabs"))
+                    AssetDatabase.CreateFolder("Assets", "Prefabs");
+                AssetDatabase.CreateFolder("Assets/Prefabs", "Level");
+            }
+
+            // 임시 세그먼트 생성
+            var tempSeg = new GameObject("CorridorSegment");
+            var sr = tempSeg.transform;
+
+            CreateCorridorSegment(sr, cw, ch, wt, hw, lenA, lenB, lenC,
+                bStartX, bCenterZ, c2x, cStartZ, cEndZ,
+                transStairCount, transStepHeight, transStepDepth, transRise, transLength,
+                floorMat, wallMat, ceilMat, stairMat);
+
+            // Static 설정
+            foreach (Transform child in tempSeg.GetComponentsInChildren<Transform>())
+            {
+                child.gameObject.isStatic = true;
+            }
+
+            // 프리팹 저장
+            string prefabPath = $"{prefabFolder}/CorridorSegment.prefab";
+            var prefab = PrefabUtility.SaveAsPrefabAsset(tempSeg, prefabPath);
+            Object.DestroyImmediate(tempSeg);
+            Debug.Log($"[ResidualEcho] Corridor segment prefab saved: {prefabPath}");
+
+            // 프리팹 인스턴스 3개 배치
+            Transform[] segmentRoots = new Transform[3];
+            for (int seg = 0; seg < 3; seg++)
+            {
+                var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                instance.name = $"Segment_{seg}";
+                instance.transform.SetParent(lv, false);
+                instance.transform.position = segmentOffset * seg;
+                segmentRoots[seg] = instance.transform;
+            }
+
+            // ====== 심리스 루프 시스템 ======
+            var loopSys = CreateChild(lv, "LoopSystem");
+
+            // TriggerForward: 세그먼트1(가운데)→세그먼트2(앞) 경계
+            // 위치: 세그먼트1의 계단 꼭대기 (C 끝 + 계단 길이)
+            var triggerFwd = new GameObject("TriggerForward");
+            triggerFwd.transform.SetParent(loopSys, false);
+            triggerFwd.transform.position = segmentOffset + new Vector3(c2x, transRise + ch / 2f, cEndZ + transLength - 0.5f);
+            var trigFwdCol = triggerFwd.AddComponent<BoxCollider>();
+            trigFwdCol.isTrigger = true;
+            trigFwdCol.size = new Vector3(cw, ch, 1f);
+
+            // TriggerBackward: 세그먼트0(뒤)→세그먼트1(가운데) 경계
+            // 위치: 세그먼트1의 A 시작 = segmentOffset * 1 + (0, ch/2, 0.5)
+            var triggerBwd = new GameObject("TriggerBackward");
+            triggerBwd.transform.SetParent(loopSys, false);
+            triggerBwd.transform.position = segmentOffset + new Vector3(0f, ch / 2f, 0.5f);
+            var trigBwdCol = triggerBwd.AddComponent<BoxCollider>();
+            trigBwdCol.isTrigger = true;
+            trigBwdCol.size = new Vector3(cw, ch, 1f);
+
+            // 출구 표지판 위치 (가운데 세그먼트 기준)
+            var signPos = new GameObject("ExitSignPosition");
+            signPos.transform.SetParent(loopSys, false);
+            signPos.transform.position = segmentOffset + new Vector3(-hw - wt, ch * 0.7f, 2f);
+            signPos.transform.rotation = Quaternion.LookRotation(Vector3.right);
+
+            // 컴포넌트 부착 + 참조 연결
+            var trigFwdComp = triggerFwd.AddComponent<ResidualEcho.Level.CorridorTrigger>();
+            var trigBwdComp = triggerBwd.AddComponent<ResidualEcho.Level.CorridorTrigger>();
+            var loopComp = loopSys.gameObject.AddComponent<ResidualEcho.Level.CorridorLoop>();
+
+            // 트리거 방향 설정: Forward는 +Z, Backward는 -Z (C/A 복도 진행 방향)
+            var trigFwdSO = new SerializedObject(trigFwdComp);
+            trigFwdSO.FindProperty("passDirection").vector3Value = Vector3.forward;
+            trigFwdSO.ApplyModifiedProperties();
+
+            var trigBwdSO = new SerializedObject(trigBwdComp);
+            trigBwdSO.FindProperty("passDirection").vector3Value = Vector3.back;
+            trigBwdSO.ApplyModifiedProperties();
+
+            var loopSO = new SerializedObject(loopComp);
+            // segments 배열 할당
+            var segmentsProp = loopSO.FindProperty("segments");
+            segmentsProp.arraySize = 3;
+            for (int i = 0; i < 3; i++)
+            {
+                segmentsProp.GetArrayElementAtIndex(i).objectReferenceValue = segmentRoots[i];
+            }
+            loopSO.FindProperty("triggerForward").objectReferenceValue = trigFwdComp;
+            loopSO.FindProperty("triggerBackward").objectReferenceValue = trigBwdComp;
+            loopSO.ApplyModifiedProperties();
+
+            // Static 설정 (LoopSystem 제외)
+            foreach (Transform child in root.GetComponentsInChildren<Transform>())
+            {
+                if (child == loopSys || child.IsChildOf(loopSys))
+                    continue;
+                child.gameObject.isStatic = true;
+            }
+
+            Undo.RegisterCreatedObjectUndo(root, "Generate Greybox Level");
+            EditorUtility.SetDirty(root);
+            Debug.Log("[ResidualEcho] Greybox level generated! (Seamless Z-corridor × 3 segments + Loop System)");
+        }
+
+        /// <summary>
+        /// Z자 복도 세그먼트 1개의 내용물을 생성한다.
+        /// Corridor A → Corner1 → Corridor B → Corner2 → Corridor C → TransitionStairs
+        /// + Room + Underground
+        /// </summary>
+        private static void CreateCorridorSegment(
+            Transform sr,
+            float cw, float ch, float wt, float hw,
+            float lenA, float lenB, float lenC,
+            float bStartX, float bCenterZ, float c2x, float cStartZ, float cEndZ,
+            int transStairCount, float transStepHeight, float transStepDepth, float transRise, float transLength,
+            Material floorMat, Material wallMat, Material ceilMat, Material stairMat)
+        {
+            // ====== 직선 A (+Z방향) ======
+            var corridorA = CreateChild(sr, "Corridor_A");
+            CreateBox(corridorA, "Floor", new Vector3(0f, -wt / 2f, lenA / 2f),
+                new Vector3(cw, wt, lenA), floorMat);
+            CreateBox(corridorA, "Ceiling", new Vector3(0f, ch + wt / 2f, lenA / 2f),
+                new Vector3(cw, wt, lenA), ceilMat);
+            CreateBox(corridorA, "Wall_Left", new Vector3(-hw - wt / 2f, ch / 2f, lenA / 2f),
+                new Vector3(wt, ch, lenA), wallMat);
+            CreateBox(corridorA, "Wall_Right", new Vector3(hw + wt / 2f, ch / 2f, lenA / 2f),
+                new Vector3(wt, ch, lenA), wallMat);
+
+            // ====== 코너1 (A→B, 우회전 +X) ======
+            var corner1 = CreateChild(sr, "Corner1");
+            float c1x = hw;
+            float c1z = lenA + hw;
+            CreateBox(corner1, "Floor", new Vector3(c1x, -wt / 2f, c1z),
+                new Vector3(cw * 2, wt, cw), floorMat);
+            CreateBox(corner1, "Ceiling", new Vector3(c1x, ch + wt / 2f, c1z),
+                new Vector3(cw * 2, wt, cw), ceilMat);
+            CreateBox(corner1, "Wall_Outer", new Vector3(c1x, ch / 2f, lenA + cw + wt / 2f),
+                new Vector3(cw * 2 + wt * 2, ch, wt), wallMat);
+            CreateBox(corner1, "Wall_Inner", new Vector3(-hw - wt / 2f, ch / 2f, c1z),
+                new Vector3(wt, ch, cw), wallMat);
+
+            // ====== 직선 B (+X방향) ======
+            var corridorB = CreateChild(sr, "Corridor_B");
+            CreateBox(corridorB, "Floor", new Vector3(bStartX + lenB / 2f, -wt / 2f, bCenterZ),
+                new Vector3(lenB, wt, cw), floorMat);
+            CreateBox(corridorB, "Ceiling", new Vector3(bStartX + lenB / 2f, ch + wt / 2f, bCenterZ),
+                new Vector3(lenB, wt, cw), ceilMat);
+            // 상벽 (z+) — 지하 입구 구멍 포함
+            float stairDoorWidth = 1.5f;
+            float stairDoorHeight = 2.4f;
+            float ugDoorX = bStartX + lenB * 0.3f;
+            float wallTopZ = bCenterZ + hw + wt / 2f;
+            float wallTopL = ugDoorX - bStartX - stairDoorWidth / 2f;
+            float wallTopR = bStartX + lenB - (ugDoorX + stairDoorWidth / 2f);
+            CreateBox(corridorB, "Wall_Top_L",
+                new Vector3(bStartX + wallTopL / 2f, ch / 2f, wallTopZ),
+                new Vector3(wallTopL, ch, wt), wallMat);
+            CreateBox(corridorB, "Wall_Top_R",
+                new Vector3(ugDoorX + stairDoorWidth / 2f + wallTopR / 2f, ch / 2f, wallTopZ),
+                new Vector3(wallTopR, ch, wt), wallMat);
+            CreateBox(corridorB, "Wall_Top_DoorTop",
+                new Vector3(ugDoorX, stairDoorHeight + (ch - stairDoorHeight) / 2f, wallTopZ),
+                new Vector3(stairDoorWidth, ch - stairDoorHeight, wt), wallMat);
+            // 하벽 (z-) — 교실 앞문/뒷문 2개 (한국 교실 스타일)
+            float doorWidth = 1.2f;
+            float doorHeight = 2.4f;
+            float doorX = bStartX + lenB / 2f;       // 교실 중심
+            float doorSpacing = 3.0f;                 // 중심에서 각 문까지 거리
+            float door1X = doorX - doorSpacing;       // 앞문
+            float door2X = doorX + doorSpacing;       // 뒷문
+            float wallBotZ = bCenterZ - hw - wt / 2f;
+            // 벽 3조각: 왼쪽 | 문1 | 중간 | 문2 | 오른쪽
+            float wallL = door1X - doorWidth / 2f - bStartX;
+            float wallM = door2X - doorWidth / 2f - (door1X + doorWidth / 2f);
+            float wallR = bStartX + lenB - (door2X + doorWidth / 2f);
+            CreateBox(corridorB, "Wall_Bot_L",
+                new Vector3(bStartX + wallL / 2f, ch / 2f, wallBotZ),
+                new Vector3(wallL, ch, wt), wallMat);
+            CreateBox(corridorB, "Wall_Bot_M",
+                new Vector3(doorX, ch / 2f, wallBotZ),
+                new Vector3(wallM, ch, wt), wallMat);
+            CreateBox(corridorB, "Wall_Bot_R",
+                new Vector3(bStartX + lenB - wallR / 2f, ch / 2f, wallBotZ),
+                new Vector3(wallR, ch, wt), wallMat);
+            CreateBox(corridorB, "Wall_Bot_DoorTop1",
+                new Vector3(door1X, doorHeight + (ch - doorHeight) / 2f, wallBotZ),
+                new Vector3(doorWidth, ch - doorHeight, wt), wallMat);
+            CreateBox(corridorB, "Wall_Bot_DoorTop2",
+                new Vector3(door2X, doorHeight + (ch - doorHeight) / 2f, wallBotZ),
+                new Vector3(doorWidth, ch - doorHeight, wt), wallMat);
+
+            // ====== 코너2 (B→C, 좌회전 +Z) ======
+            var corner2 = CreateChild(sr, "Corner2");
+            CreateBox(corner2, "Floor", new Vector3(c2x, -wt / 2f, bCenterZ),
+                new Vector3(cw, wt, cw), floorMat);
+            CreateBox(corner2, "Ceiling", new Vector3(c2x, ch + wt / 2f, bCenterZ),
+                new Vector3(cw, wt, cw), ceilMat);
+            CreateBox(corner2, "Wall_Outer", new Vector3(c2x + hw + wt / 2f, ch / 2f, bCenterZ),
+                new Vector3(wt, ch, cw + wt * 2), wallMat);
+            CreateBox(corner2, "Wall_Inner", new Vector3(c2x, ch / 2f, bCenterZ - hw - wt / 2f),
+                new Vector3(cw, ch, wt), wallMat);
+
+            // ====== 직선 C (+Z방향) ======
+            var corridorC = CreateChild(sr, "Corridor_C");
+            CreateBox(corridorC, "Floor", new Vector3(c2x, -wt / 2f, cStartZ + lenC / 2f),
+                new Vector3(cw, wt, lenC), floorMat);
+            CreateBox(corridorC, "Ceiling", new Vector3(c2x, ch + wt / 2f, cStartZ + lenC / 2f),
+                new Vector3(cw, wt, lenC), ceilMat);
+            CreateBox(corridorC, "Wall_Right", new Vector3(c2x + hw + wt / 2f, ch / 2f, cStartZ + lenC / 2f),
+                new Vector3(wt, ch, lenC), wallMat);
+            CreateBox(corridorC, "Wall_Left", new Vector3(c2x - hw - wt / 2f, ch / 2f, cStartZ + lenC / 2f),
+                new Vector3(wt, ch, lenC), wallMat);
+
+            // ====== C→A 연결 계단 (올라가기) ======
+            var transStairs = CreateChild(sr, "TransitionStairs");
+            for (int i = 0; i < transStairCount; i++)
+            {
+                float stepY = transStepHeight * (i + 0.5f);
+                float stepZ = cEndZ + (i + 0.5f) * transStepDepth;
+                CreateBox(transStairs, $"Step_{i}",
+                    new Vector3(c2x, stepY - transStepHeight / 2f, stepZ),
+                    new Vector3(cw, transStepHeight, transStepDepth), stairMat);
+            }
+            float transHalfLen = transLength / 2f;
+            float transCenterZ = cEndZ + transHalfLen;
+            float transCenterY = transRise / 2f;
+            CreateBox(transStairs, "Wall_Right",
+                new Vector3(c2x + hw + wt / 2f, transCenterY + ch / 2f, transCenterZ),
+                new Vector3(wt, ch + transRise, transLength), wallMat);
+            CreateBox(transStairs, "Wall_Left",
+                new Vector3(c2x - hw - wt / 2f, transCenterY + ch / 2f, transCenterZ),
+                new Vector3(wt, ch + transRise, transLength), wallMat);
+            CreateBox(transStairs, "Ceiling",
+                new Vector3(c2x, transRise + ch + wt / 2f, transCenterZ),
+                new Vector3(cw, wt, transLength), ceilMat);
+
+            // ====== 방/교실 (직선B 하단으로 돌출) ======
+            var room = CreateChild(sr, "Room");
+            float roomWidth = 10.8f;  // 교실 가로 (X)
+            float roomDepth = 9.5f;   // 교실 세로 (Z)
+            float roomCenterX = doorX;
+            float roomCenterZ = bCenterZ - hw - wt - roomDepth / 2f;
+            CreateBox(room, "Floor", new Vector3(roomCenterX, -wt / 2f, roomCenterZ),
+                new Vector3(roomWidth, wt, roomDepth), floorMat);
+            CreateBox(room, "Ceiling", new Vector3(roomCenterX, ch + wt / 2f, roomCenterZ),
+                new Vector3(roomWidth, wt, roomDepth), ceilMat);
+            CreateBox(room, "Wall_Back", new Vector3(roomCenterX, ch / 2f, roomCenterZ - roomDepth / 2f - wt / 2f),
+                new Vector3(roomWidth, ch, wt), wallMat);
+            CreateBox(room, "Wall_Left", new Vector3(roomCenterX - roomWidth / 2f - wt / 2f, ch / 2f, roomCenterZ),
+                new Vector3(wt, ch, roomDepth), wallMat);
+            CreateBox(room, "Wall_Right", new Vector3(roomCenterX + roomWidth / 2f + wt / 2f, ch / 2f, roomCenterZ),
+                new Vector3(wt, ch, roomDepth), wallMat);
+
+            // ====== 교실 스폰포인트 (문 위치) + 상호작용 박스 ======
+            // 교실 문 안쪽 스폰포인트 (교실 안에서 문을 보면 크리처가 서 있는 위치)
+            float spawnZ = bCenterZ - hw - wt; // 문 교실쪽 안쪽 면
+            // 앞문 스폰포인트 (교실 안을 바라보도록 = -Z)
+            var spawnPoint1 = new GameObject("SpawnPoint_Door1");
+            spawnPoint1.transform.SetParent(room, false);
+            spawnPoint1.transform.localPosition = new Vector3(door1X - roomCenterX, 0f, spawnZ - roomCenterZ);
+            spawnPoint1.transform.localRotation = Quaternion.LookRotation(Vector3.back);
+            // 뒷문 스폰포인트
+            var spawnPoint2 = new GameObject("SpawnPoint_Door2");
+            spawnPoint2.transform.SetParent(room, false);
+            spawnPoint2.transform.localPosition = new Vector3(door2X - roomCenterX, 0f, spawnZ - roomCenterZ);
+            spawnPoint2.transform.localRotation = Quaternion.LookRotation(Vector3.back);
+
+            // 상호작용 박스 (교실 중앙에 배치)
+            var triggerBox = CreateBox(room, "InvestigateBox",
+                new Vector3(roomCenterX, 0.5f, roomCenterZ),
+                new Vector3(0.6f, 1f, 0.6f), stairMat);
+            triggerBox.isStatic = false;
+            triggerBox.tag = "Interactable";
+            var boxCollider = triggerBox.GetComponent<BoxCollider>();
+            if (boxCollider == null) boxCollider = triggerBox.AddComponent<BoxCollider>();
+            var spawnTrigger = triggerBox.AddComponent<CreatureSpawnTrigger>();
+
+            // CreatureSpawnTrigger에 스폰포인트 할당
+            var triggerSO = new SerializedObject(spawnTrigger);
+            var spawnPointsProp = triggerSO.FindProperty("spawnPoints");
+            spawnPointsProp.arraySize = 2;
+            spawnPointsProp.GetArrayElementAtIndex(0).objectReferenceValue = spawnPoint1.transform;
+            spawnPointsProp.GetArrayElementAtIndex(1).objectReferenceValue = spawnPoint2.transform;
+            triggerSO.ApplyModifiedProperties();
+
+            // ====== 지하 (직선B 중간, 상벽 쪽에서 계단 하강) ======
+            var ug = CreateChild(sr, "Underground");
+            float ugZ = bCenterZ + hw + wt;
+            float ugDepth = 3.5f;
+            float ugRoomSize = 4f;
+            float ugX = ugDoorX;
+            int stairCount = 7;
+            float stairStep = ugDepth / stairCount;
+            float stairDepthZ = 0.6f;
+            for (int i = 0; i < stairCount; i++)
+            {
+                CreateBox(ug, $"Stair_{i}",
+                    new Vector3(ugX, -stairStep * (i + 0.5f), ugZ + (i + 0.5f) * stairDepthZ),
+                    new Vector3(stairDoorWidth, 0.15f, stairDepthZ), stairMat);
+                CreateBox(ug, $"StairWall_L_{i}",
+                    new Vector3(ugX - stairDoorWidth / 2f - wt / 2f, -stairStep * i - stairStep / 2f, ugZ + (i + 0.5f) * stairDepthZ),
+                    new Vector3(wt, stairStep + 0.15f, stairDepthZ), wallMat);
+                CreateBox(ug, $"StairWall_R_{i}",
+                    new Vector3(ugX + stairDoorWidth / 2f + wt / 2f, -stairStep * i - stairStep / 2f, ugZ + (i + 0.5f) * stairDepthZ),
+                    new Vector3(wt, stairStep + 0.15f, stairDepthZ), wallMat);
+            }
+            float ugFloorY = -ugDepth;
+            float stairEndZ = ugZ + stairCount * stairDepthZ;
+            float ugCZ = stairEndZ + ugRoomSize / 2f;
+            CreateBox(ug, "UG_Floor", new Vector3(ugX, ugFloorY - wt / 2f, ugCZ),
+                new Vector3(ugRoomSize, wt, ugRoomSize), floorMat);
+            CreateBox(ug, "UG_Ceiling", new Vector3(ugX, ugFloorY + ch + wt / 2f, ugCZ),
+                new Vector3(ugRoomSize, wt, ugRoomSize), ceilMat);
+            CreateBox(ug, "UG_Wall_Back", new Vector3(ugX, ugFloorY + ch / 2f, ugCZ + ugRoomSize / 2f + wt / 2f),
+                new Vector3(ugRoomSize, ch, wt), wallMat);
+            CreateBox(ug, "UG_Wall_Left", new Vector3(ugX - ugRoomSize / 2f - wt / 2f, ugFloorY + ch / 2f, ugCZ),
+                new Vector3(wt, ch, ugRoomSize), wallMat);
+            CreateBox(ug, "UG_Wall_Right", new Vector3(ugX + ugRoomSize / 2f + wt / 2f, ugFloorY + ch / 2f, ugCZ),
+                new Vector3(wt, ch, ugRoomSize), wallMat);
+        }
+
+        /// <summary>
+        /// GameEventChannel ScriptableObject 에셋을 생성/로드한다.
+        /// </summary>
+        private static GameEventChannel GetOrCreateEventChannel(string channelName)
+        {
+            string folder = "Assets/Data/Events";
+            if (!AssetDatabase.IsValidFolder("Assets/Data"))
+                AssetDatabase.CreateFolder("Assets", "Data");
+            if (!AssetDatabase.IsValidFolder(folder))
+                AssetDatabase.CreateFolder("Assets/Data", "Events");
+
+            string path = $"{folder}/{channelName}.asset";
+            var channel = AssetDatabase.LoadAssetAtPath<GameEventChannel>(path);
+            if (channel == null)
+            {
+                channel = ScriptableObject.CreateInstance<GameEventChannel>();
+                AssetDatabase.CreateAsset(channel, path);
+                Debug.Log($"[ResidualEcho] Event channel created: {path}");
+            }
+            return channel;
+        }
+
+        /// <summary>
+        /// 그레이박스용 머티리얼을 생성/로드한다.
+        /// </summary>
+        private static Material CreateGreyboxMaterial(string name, Color color)
+        {
+            string folder = "Assets/Materials/Greybox";
+            if (!AssetDatabase.IsValidFolder("Assets/Materials"))
+                AssetDatabase.CreateFolder("Assets", "Materials");
+            if (!AssetDatabase.IsValidFolder(folder))
+                AssetDatabase.CreateFolder("Assets/Materials", "Greybox");
+
+            string path = $"{folder}/Greybox_{name}.mat";
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (mat == null)
+            {
+                mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                mat.color = color;
+                AssetDatabase.CreateAsset(mat, path);
+            }
+            return mat;
+        }
+
+        /// <summary>
+        /// 빈 자식 오브젝트를 생성한다.
+        /// </summary>
+        private static Transform CreateChild(Transform parent, string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            return go.transform;
+        }
+
+        /// <summary>
+        /// 큐브 프리미티브를 생성한다. 위치/크기/머티리얼 지정.
+        /// </summary>
+        private static GameObject CreateBox(Transform parent, string name, Vector3 position, Vector3 scale, Material mat)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = position;
+            go.transform.localScale = scale;
+            go.isStatic = true;
+
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null && mat != null)
+            {
+                renderer.sharedMaterial = mat;
+            }
+
+            return go;
         }
 
         /// <summary>

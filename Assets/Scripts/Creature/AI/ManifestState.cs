@@ -1,27 +1,55 @@
+using UnityEngine;
+
 namespace ResidualEcho.Creature
 {
     /// <summary>
-    /// 출현 상태: 레벨 내 특정 스폰포인트에서 크리처가 나타나는 연출.
-    /// TODO: 레벨 디자인 완성 후 구현 예정 (스폰포인트, 연출 타이밍 등)
+    /// 출현 상태: 크리처가 스폰포인트로 워프한 뒤 일정 시간 후 모습을 드러낸다.
+    /// Enter에서 비가시 + 워프, 대기 시간 경과 후 가시화 + Approach 전환.
     /// </summary>
     public class ManifestState : CreatureState
     {
+        private float timer;
+
         public ManifestState(CreatureStateMachine stateMachine) : base(stateMachine) { }
 
         public override void Enter()
         {
-            // TODO: 출현 연출 시작 (레벨 스폰포인트에서 등장)
+            stateMachine.Agent.isStopped = true;
+            stateMachine.SetVisible(false);
+
+            WarpToSpawnPoint();
+
+            timer = stateMachine.Settings.ManifestDelay;
         }
 
         public override void Update()
         {
-            // TODO: 출현 연출 완료 시 접근 상태로 전환
-            stateMachine.TransitionTo(stateMachine.ApproachStateInstance);
+            timer -= Time.deltaTime;
+
+            if (timer <= 0f)
+            {
+                stateMachine.SetVisible(true);
+                stateMachine.TransitionTo(stateMachine.ApproachStateInstance);
+            }
         }
 
         public override void Exit()
         {
-            // TODO: 출현 연출 정리
+            stateMachine.Agent.isStopped = false;
+        }
+
+        /// <summary>
+        /// 스폰포인트가 설정되어 있으면 해당 위치로 워프한다.
+        /// </summary>
+        private void WarpToSpawnPoint()
+        {
+            Transform spawnPoint = stateMachine.CreatureSpawnPoint;
+            if (spawnPoint == null) return;
+
+            stateMachine.Agent.enabled = false;
+            stateMachine.transform.position = spawnPoint.position;
+            stateMachine.transform.rotation = spawnPoint.rotation;
+            stateMachine.Agent.enabled = true;
         }
     }
 }

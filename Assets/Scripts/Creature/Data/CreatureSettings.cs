@@ -9,7 +9,7 @@ namespace ResidualEcho.Creature
     public class CreatureSettings : ScriptableObject
     {
         [Header("이동 속도")]
-        [SerializeField] private float approachSpeed = 2f;
+        [SerializeField] private float approachSpeed = 3f;
         [SerializeField] private float chaseSpeed = 6f;
 
         [Header("감지")]
@@ -28,6 +28,12 @@ namespace ResidualEcho.Creature
         [SerializeField] private float rageSpeedBonus = 0.15f;
         [SerializeField] private int maxRageLevel = 5;
         [SerializeField] private float rageApproachRadiusShrink = 0.5f;
+
+        [Header("출현 (Manifest)")]
+        [SerializeField] private float manifestDelay = 1.5f;
+
+        [Header("격앙 (Enrage)")]
+        [SerializeField] private float enrageDuration = 1f;
 
         [Header("경직 (Paralysis)")]
         [SerializeField] private float paralysisRecoveryDelay = 1f;
@@ -55,6 +61,16 @@ namespace ResidualEcho.Creature
         /// 격앙 레벨당 접근 랜덤 반경 축소량
         /// </summary>
         public float RageApproachRadiusShrink => rageApproachRadiusShrink;
+
+        /// <summary>
+        /// 출현 연출 대기 시간 (초)
+        /// </summary>
+        public float ManifestDelay => manifestDelay;
+
+        /// <summary>
+        /// 격앙 연출 시간 (초)
+        /// </summary>
+        public float EnrageDuration => enrageDuration;
 
         /// <summary>
         /// 경직 상태에서 노래 종료 후 복귀까지의 지연 시간 (초)

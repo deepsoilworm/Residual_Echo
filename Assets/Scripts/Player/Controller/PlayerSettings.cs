@@ -23,6 +23,9 @@ namespace ResidualEcho.Player
         [SerializeField] private float crouchHeight = 1.0f;
         [SerializeField] private float crouchTransitionSpeed = 8f;
 
+        [Header("점프")]
+        [SerializeField] private float jumpForce = 5f;
+
         [Header("중력")]
         [SerializeField] private float gravity = -15f;
 
@@ -41,6 +44,7 @@ namespace ResidualEcho.Player
         public float StandingHeight => standingHeight;
         public float CrouchHeight => crouchHeight;
         public float CrouchTransitionSpeed => crouchTransitionSpeed;
+        public float JumpForce => jumpForce;
         public float Gravity => gravity;
         public float InteractionDistance => interactionDistance;
         public float FlashlightMaxBattery => flashlightMaxBattery;

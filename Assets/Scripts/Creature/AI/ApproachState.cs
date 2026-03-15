@@ -23,12 +23,12 @@ namespace ResidualEcho.Creature
 
         public override void Update()
         {
-            // 시야 내 플레이어 감지 시 추격 전환
-            if (stateMachine.Detection.CanSeePlayer)
-            {
-                stateMachine.TransitionTo(stateMachine.ChaseState);
-                return;
-            }
+            // TODO: 추격 전환은 나중에 활성화
+            // if (stateMachine.Detection.CanSeePlayer)
+            // {
+            //     stateMachine.TransitionTo(stateMachine.ChaseState);
+            //     return;
+            // }
 
             // 목적지 도달 시 새로운 대략적 위치로 재설정
             NavMeshAgent agent = stateMachine.Agent;

@@ -20,6 +20,7 @@ namespace ResidualEcho.Player
         private float verticalVelocity;
         private bool isSprinting;
         private bool isCrouching;
+        private bool isJumpPressed;
         private float currentHeight;
 
         private void Awake()
@@ -69,6 +70,12 @@ namespace ResidualEcho.Player
             if (characterController.isGrounded && verticalVelocity < 0f)
             {
                 verticalVelocity = -2f;
+            }
+
+            if (isJumpPressed && characterController.isGrounded)
+            {
+                verticalVelocity = settings.JumpForce;
+                isJumpPressed = false;
             }
 
             verticalVelocity += settings.Gravity * Time.deltaTime;
@@ -128,6 +135,14 @@ namespace ResidualEcho.Player
         public void OnSprint(InputValue value)
         {
             isSprinting = value.isPressed;
+        }
+
+        /// <summary>
+        /// Jump 입력 콜백
+        /// </summary>
+        public void OnJump(InputValue value)
+        {
+            isJumpPressed = value.isPressed;
         }
 
         /// <summary>

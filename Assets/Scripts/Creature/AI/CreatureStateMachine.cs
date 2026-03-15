@@ -16,6 +16,7 @@ namespace ResidualEcho.Creature
     {
         [SerializeField] private CreatureSettings settings;
         [SerializeField] private Renderer creatureRenderer;
+        [SerializeField] private Transform creatureSpawnPoint;
 
         [Header("이벤트 채널")]
         [SerializeField] private GameEventChannel onHayunItemCollected;
@@ -23,9 +24,11 @@ namespace ResidualEcho.Creature
         [SerializeField] private GameEventChannel onSongEnded;
         [SerializeField] private GameEventChannel onPlayerDied;
         [SerializeField] private GameEventChannel onPlayerRespawned;
+        [SerializeField] private GameEventChannel onCreatureSpawnRequested;
 
         private CreatureState currentState;
         private CreatureState stateBeforeParalysis;
+        private CreatureState stateBeforeEnrage;
         private Animator animator;
         private int rageLevel;
         private Vector3 initialPosition;
@@ -51,6 +54,16 @@ namespace ResidualEcho.Creature
         public Transform PlayerTransform => Detection.PlayerTransform;
 
         /// <summary>
+        /// 크리처 스폰포인트 Transform. ManifestState에서 사용.
+        /// 외부에서 동적으로 변경 가능 (이벤트 트리거 등).
+        /// </summary>
+        public Transform CreatureSpawnPoint
+        {
+            get => creatureSpawnPoint;
+            set => creatureSpawnPoint = value;
+        }
+
+        /// <summary>
         /// 현재 격앙 레벨 (0 ~ MaxRageLevel)
         /// </summary>
         public int RageLevel => rageLevel;
@@ -66,6 +79,7 @@ namespace ResidualEcho.Creature
         public VanishState VanishState { get; private set; }
         public ParalysisState ParalysisState { get; private set; }
         public ManifestState ManifestState { get; private set; }
+        public EnrageState EnrageState { get; private set; }
 
         private void Awake()
         {
@@ -78,13 +92,24 @@ namespace ResidualEcho.Creature
             VanishState = new VanishState(this);
             ParalysisState = new ParalysisState(this);
             ManifestState = new ManifestState(this);
+            EnrageState = new EnrageState(this);
 
             initialPosition = transform.position;
         }
 
         private void Start()
         {
-            TransitionTo(ApproachStateInstance);
+            // 스폰포인트가 설정되어 있으면 바로 출현 (프리팹 인스턴스화 시)
+            if (creatureSpawnPoint != null)
+            {
+                TransitionTo(ManifestState);
+            }
+            else
+            {
+                // 스폰 요청 전까지 숨어있는다
+                SetVisible(false);
+                Agent.enabled = false;
+            }
         }
 
         private void OnEnable()
@@ -94,6 +119,7 @@ namespace ResidualEcho.Creature
             if (onSongEnded != null) onSongEnded.Subscribe(HandleSongEnded);
             if (onPlayerDied != null) onPlayerDied.Subscribe(HandlePlayerDied);
             if (onPlayerRespawned != null) onPlayerRespawned.Subscribe(HandlePlayerRespawned);
+            if (onCreatureSpawnRequested != null) onCreatureSpawnRequested.Subscribe(HandleCreatureSpawnRequested);
         }
 
         private void OnDisable()
@@ -103,6 +129,7 @@ namespace ResidualEcho.Creature
             if (onSongEnded != null) onSongEnded.Unsubscribe(HandleSongEnded);
             if (onPlayerDied != null) onPlayerDied.Unsubscribe(HandlePlayerDied);
             if (onPlayerRespawned != null) onPlayerRespawned.Unsubscribe(HandlePlayerRespawned);
+            if (onCreatureSpawnRequested != null) onCreatureSpawnRequested.Unsubscribe(HandleCreatureSpawnRequested);
         }
 
         private void Update()
@@ -153,6 +180,16 @@ namespace ResidualEcho.Creature
         }
 
         /// <summary>
+        /// 격앙 상태에서 복귀한다. 격앙 전 상태로 돌아간다.
+        /// </summary>
+        public void ReturnFromEnrage()
+        {
+            CreatureState returnState = stateBeforeEnrage ?? ApproachStateInstance;
+            stateBeforeEnrage = null;
+            TransitionTo(returnState);
+        }
+
+        /// <summary>
         /// 크리처를 초기 위치로 리셋하고 접근 상태로 전환한다.
         /// </summary>
         public void ResetToInitialPosition()
@@ -163,17 +200,22 @@ namespace ResidualEcho.Creature
 
             SetVisible(true);
             stateBeforeParalysis = null;
-            TransitionTo(ApproachStateInstance);
+            stateBeforeEnrage = null;
+            TransitionTo(ManifestState);
         }
 
         // --- 이벤트 핸들러 ---
 
         private void HandleHayunItemCollected()
         {
-            if (rageLevel < settings.MaxRageLevel)
-            {
-                rageLevel++;
-            }
+            if (rageLevel >= settings.MaxRageLevel) return;
+
+            rageLevel++;
+
+            if (currentState is EnrageState || currentState is ParalysisState) return;
+
+            stateBeforeEnrage = currentState;
+            TransitionTo(EnrageState);
         }
 
         private void HandleSongStarted()
@@ -201,6 +243,22 @@ namespace ResidualEcho.Creature
         {
             Agent.isStopped = false;
             ResetToInitialPosition();
+        }
+
+        /// <summary>
+        /// 크리처 스폰 요청 처리. ManifestState로 전환하여 스폰포인트에 출현한다.
+        /// CreatureSpawnPoint가 외부에서 설정된 후 호출되어야 한다.
+        /// </summary>
+        /// <summary>
+        /// 크리처 스폰 요청 처리. ManifestState로 전환하여 스폰포인트에 출현한다.
+        /// CreatureSpawnPoint가 외부에서 설정된 후 호출되어야 한다.
+        /// </summary>
+        private void HandleCreatureSpawnRequested()
+        {
+            if (creatureSpawnPoint == null) return;
+
+            Agent.enabled = true;
+            TransitionTo(ManifestState);
         }
     }
 }
